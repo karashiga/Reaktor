@@ -1,120 +1,152 @@
 #!/usr/bin/env python3
-import os, json, requests, time
+import os
+import json
+import requests
+import time
 
 ACCOUNTS_FILE = "accounts.json"
+GRAPH_API = "https://graph.facebook.com"
 
-# Load accounts
 def load_accounts():
-    if not os.path.exists(ACCOUNTS_FILE):
-        return []
-    with open(ACCOUNTS_FILE, "r") as f:
-        return json.load(f)
+    if os.path.exists(ACCOUNTS_FILE):
+        with open(ACCOUNTS_FILE, "r") as f:
+            return json.load(f)
+    return []
 
-# Save accounts
-def save_accounts(data):
+def save_accounts(accounts):
     with open(ACCOUNTS_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+        json.dump(accounts, f, indent=2)
 
-# Get Graph API Token using DB-LN cookie
 def get_token_from_cookie(dbln):
+    cookies = {"dbln": dbln}
     try:
-        cookies = {"dbln": dbln}
-        
-        # Official Facebook mobile token endpoint
         url = "https://m.facebook.com/composer/ocelot/async_loader/?publisher=feed"
         r = requests.get(url, cookies=cookies)
+        text = r.text
+        if "EAA" in text:
+            token = "EAA" + text.split("EAA")[1].split('"')[0]
+            return token
+    except Exception as e:
+        print("Error getting token:", e)
+    return None
 
-        token = None
-        if "EAA" in r.text:
-            token = r.text.split("EAA")[1].split('"')[0]
-            token = "EAA" + token
-
-        return token
-    except:
-        return None
-
-# Add account
 def add_account():
     os.system("clear")
-    print("=== ADD FACEBOOK ACCOUNT USING DB-LN COOKIE ===\n")
+    print("=== ADD ACCOUNT ===\n")
     dbln = input("Paste DB-LN cookie: ").strip()
+    name = input("Enter a name for this account: ").strip()
 
-    print("\nGetting Graph API Token...")
+    print("\nGetting Graph API token …")
     token = get_token_from_cookie(dbln)
-
     if not token:
         print("❌ Failed to get token. Cookie invalid.")
         time.sleep(2)
         return
 
     accounts = load_accounts()
-    accounts.append({"dbln": dbln, "token": token})
+    accounts.append({"dbln": dbln, "token": token, "name": name})
     save_accounts(accounts)
 
-    print("\n✅ Account added successfully!")
-    print("Saved token: " + token[:20] + "...")
+    print("\n✅ Account added!")
+    print("Token prefix:", token[:20], "…")
     time.sleep(2)
 
-# React to a post
 def react_to_post():
     os.system("clear")
-    print("=== AUTO REACT TO PUBLIC POST ===\n")
-    post_id = input("Enter Facebook Post Link or ID: ").strip()
-    reaction = input("Reaction (LIKE, LOVE, WOW, HAHA, SAD, ANGRY): ").upper()
+    print("=== AUTO REACT ===\n")
+    post = input("Enter public post URL or ID: ").strip()
+    reaction = input("Enter reaction (LIKE, LOVE, WOW, HAHA, SAD, ANGRY, CARE): ").upper()
 
     accounts = load_accounts()
-    if len(accounts) == 0:
-        print("\n❌ No accounts stored!")
+    if not accounts:
+        print("❌ No accounts in config.")
         time.sleep(2)
         return
 
-    print(f"\nUsing {len(accounts)} accounts...\n")
+    post_id = post.split("/")[-1].split("?")[0] if "/" in post else post
+    print(f"\nUsing {len(accounts)} accounts …\n")
 
-    for idx, acc in enumerate(accounts, start=1):
-        token = acc["token"]
-        url = f"https://graph.facebook.com/{post_id}/reactions"
-        payload = {
-            "type": reaction,
-            "access_token": token
-        }
+    for i, acc in enumerate(accounts, start=1):
+        token = acc.get("token")
+        name = acc.get("name", "<no name>")
+        print(f"[{i}] Reacting with {name} …")
 
-        r = requests.post(url, data=payload)
+        url = f"{GRAPH_API}/{post_id}/reactions"
+        data = {"type": reaction, "access_token": token}
+        r = requests.post(url, data=data)
 
-        if r.status_code == 200:
-            print(f"[{idx}] ✅ Reacted successfully.")
+        try:
+            resp = r.json()
+        except:
+            resp = {}
+
+        if r.status_code == 200 and "error" not in resp:
+            print("   ✅ Success")
         else:
-            print(f"[{idx}] ❌ Failed: {r.text}")
+            print("   ❌ Failed:", resp)
 
         time.sleep(1)
 
-    input("\nDone! Press Enter...")
+    input("\nDone. Press Enter to return to menu…")
 
-# Dashboard / Menu
+def show_accounts():
+    os.system("clear")
+    print("=== SAVED ACCOUNTS ===\n")
+    accounts = load_accounts()
+    if not accounts:
+        print("No accounts saved.\n")
+    else:
+        for i, acc in enumerate(accounts, start=1):
+            name = acc.get("name", "<no name>")
+            token = acc.get("token", "")
+            print(f"[{i}] {name} — token prefix: {token[:20]}…")
+    input("\nPress Enter to go back…")
+
+def delete_account():
+    accounts = load_accounts()
+    if not accounts:
+        print("❌ No accounts to delete.")
+        time.sleep(2)
+        return
+    show_accounts()
+    idx = input("Enter account number to delete: ").strip()
+    try:
+        idx = int(idx) - 1
+        if 0 <= idx < len(accounts):
+            removed = accounts.pop(idx)
+            save_accounts(accounts)
+            print(f"✅ Removed account: {removed.get('name')}")
+        else:
+            print("❌ Index out of range.")
+    except ValueError:
+        print("❌ Invalid input.")
+    time.sleep(2)
+
 def menu():
     while True:
         os.system("clear")
         accounts = load_accounts()
-        total = len(accounts)
-
-        print("======================================")
-        print(" FACEBOOK AUTO REACTION TOOL (Termux) ")
-        print("======================================")
-        print(f"Total Accounts Saved: {total}")
-        print("--------------------------------------")
-        print("[1] Add Account (DB-LN Cookie)")
-        print("[2] Auto React to Post")
-        print("[3] Exit")
-        print("--------------------------------------")
-        choice = input("Select: ")
+        print("===== FB AUTO REACT TOOL =====")
+        print(f"Accounts saved: {len(accounts)}")
+        print("[1] Add account")
+        print("[2] Show accounts")
+        print("[3] Auto react to post")
+        print("[4] Delete account")
+        print("[0] Exit")
+        choice = input("Choose: ").strip()
 
         if choice == "1":
             add_account()
         elif choice == "2":
-            react_to_post()
+            show_accounts()
         elif choice == "3":
-            exit()
+            react_to_post()
+        elif choice == "4":
+            delete_account()
+        elif choice == "0":
+            break
         else:
-            print("Invalid Option!")
+            print("❌ Invalid choice.")
             time.sleep(1)
 
 if __name__ == "__main__":
