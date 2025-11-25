@@ -1,82 +1,121 @@
-import requests
-import json
-import time
+#!/usr/bin/env python3
+import os, json, requests, time
 
-# List of multiple tokens (each token = 1 Facebook account)
-TOKEN_FILE = "tokens.txt"
+ACCOUNTS_FILE = "accounts.json"
 
-def load_tokens():
-    try:
-        with open(TOKEN_FILE, "r") as f:
-            return [t.strip() for t in f.readlines() if t.strip()]
-    except FileNotFoundError:
-        print("[!] tokens.txt not found.")
+# Load accounts
+def load_accounts():
+    if not os.path.exists(ACCOUNTS_FILE):
         return []
+    with open(ACCOUNTS_FILE, "r") as f:
+        return json.load(f)
 
-def save_token(token):
-    with open(TOKEN_FILE, "a") as f:
-        f.write(token + "\n")
+# Save accounts
+def save_accounts(data):
+    with open(ACCOUNTS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-def react_with_token(token, post_id, reaction_type):
-    url = f"https://graph.facebook.com/{post_id}/reactions"
-    params = {
-        "type": reaction_type.upper(),
-        "access_token": token
-    }
-
-    response = requests.post(url, data=params)
-
+# Get Graph API Token using DB-LN cookie
+def get_token_from_cookie(dbln):
     try:
-        data = response.json()
+        cookies = {"dbln": dbln}
+        
+        # Official Facebook mobile token endpoint
+        url = "https://m.facebook.com/composer/ocelot/async_loader/?publisher=feed"
+        r = requests.get(url, cookies=cookies)
+
+        token = None
+        if "EAA" in r.text:
+            token = r.text.split("EAA")[1].split('"')[0]
+            token = "EAA" + token
+
+        return token
     except:
-        return False, "Invalid JSON response from FB"
+        return None
 
-    if "success" in data and data["success"] is True:
-        return True, "Reacted successfully"
-    else:
-        return False, str(data)
+# Add account
+def add_account():
+    os.system("clear")
+    print("=== ADD FACEBOOK ACCOUNT USING DB-LN COOKIE ===\n")
+    dbln = input("Paste DB-LN cookie: ").strip()
 
-def auto_react():
-    tokens = load_tokens()
-    if not tokens:
-        print("No tokens available in tokens.txt")
+    print("\nGetting Graph API Token...")
+    token = get_token_from_cookie(dbln)
+
+    if not token:
+        print("❌ Failed to get token. Cookie invalid.")
+        time.sleep(2)
         return
 
-    post_id = input("Enter Facebook PUBLIC post ID: ")
-    reaction_type = input("Choose reaction (LIKE, LOVE, WOW, HAHA, SAD, ANGRY, CARE): ").upper()
+    accounts = load_accounts()
+    accounts.append({"dbln": dbln, "token": token})
+    save_accounts(accounts)
 
-    for i, token in enumerate(tokens):
-        print(f"\n[{i+1}] Using token: {token[:20]}...")
+    print("\n✅ Account added successfully!")
+    print("Saved token: " + token[:20] + "...")
+    time.sleep(2)
 
-        success, message = react_with_token(token, post_id, reaction_type)
+# React to a post
+def react_to_post():
+    os.system("clear")
+    print("=== AUTO REACT TO PUBLIC POST ===\n")
+    post_id = input("Enter Facebook Post Link or ID: ").strip()
+    reaction = input("Reaction (LIKE, LOVE, WOW, HAHA, SAD, ANGRY): ").upper()
 
-        if success:
-            print("   ✔", message)
+    accounts = load_accounts()
+    if len(accounts) == 0:
+        print("\n❌ No accounts stored!")
+        time.sleep(2)
+        return
+
+    print(f"\nUsing {len(accounts)} accounts...\n")
+
+    for idx, acc in enumerate(accounts, start=1):
+        token = acc["token"]
+        url = f"https://graph.facebook.com/{post_id}/reactions"
+        payload = {
+            "type": reaction,
+            "access_token": token
+        }
+
+        r = requests.post(url, data=payload)
+
+        if r.status_code == 200:
+            print(f"[{idx}] ✅ Reacted successfully.")
         else:
-            print("   ✘ Failed:", message)
+            print(f"[{idx}] ❌ Failed: {r.text}")
 
-        time.sleep(1)  # Avoid spamming API
+        time.sleep(1)
 
-def add_account():
-    token = input("Paste your Facebook access token: ")
-    save_token(token)
-    print("[+] Token saved!")
+    input("\nDone! Press Enter...")
 
+# Dashboard / Menu
 def menu():
     while True:
-        print("\n=== AUTO FB REACTION TOOL ===")
-        print("1. Add Account Token")
-        print("2. Auto React to Post")
-        print("3. Exit")
+        os.system("clear")
+        accounts = load_accounts()
+        total = len(accounts)
 
-        choice = input("Choose: ")
+        print("======================================")
+        print(" FACEBOOK AUTO REACTION TOOL (Termux) ")
+        print("======================================")
+        print(f"Total Accounts Saved: {total}")
+        print("--------------------------------------")
+        print("[1] Add Account (DB-LN Cookie)")
+        print("[2] Auto React to Post")
+        print("[3] Exit")
+        print("--------------------------------------")
+        choice = input("Select: ")
 
         if choice == "1":
             add_account()
         elif choice == "2":
-            auto_react()
+            react_to_post()
+        elif choice == "3":
+            exit()
         else:
-            break
+            print("Invalid Option!")
+            time.sleep(1)
 
 if __name__ == "__main__":
     menu()
