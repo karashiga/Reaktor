@@ -1,153 +1,216 @@
 #!/usr/bin/env python3
-import os
-import json
 import requests
+import json
+import os
 import time
 
 ACCOUNTS_FILE = "accounts.json"
-GRAPH_API = "https://graph.facebook.com"
 
+# ---------------------------------------
+# Load accounts file
+# ---------------------------------------
 def load_accounts():
-    if os.path.exists(ACCOUNTS_FILE):
-        with open(ACCOUNTS_FILE, "r") as f:
-            return json.load(f)
-    return []
+    if not os.path.exists(ACCOUNTS_FILE):
+        return []
+    with open(ACCOUNTS_FILE, "r") as f:
+        return json.load(f)
 
-def save_accounts(accounts):
+def save_accounts(data):
     with open(ACCOUNTS_FILE, "w") as f:
-        json.dump(accounts, f, indent=2)
+        json.dump(data, f, indent=4)
 
-def get_token_from_cookie(dbln):
-    cookies = {"dbln": dbln}
-    try:
-        url = "https://m.facebook.com/composer/ocelot/async_loader/?publisher=feed"
-        r = requests.get(url, cookies=cookies)
-        text = r.text
-        if "EAA" in text:
-            token = "EAA" + text.split("EAA")[1].split('"')[0]
-            return token
-    except Exception as e:
-        print("Error getting token:", e)
-    return None
 
+# ---------------------------------------
+# Check account status
+# ---------------------------------------
+def check_account(cookie):
+    headers = {
+        "Cookie": cookie,
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    r = requests.get("https://mbasic.facebook.com/profile.php", headers=headers)
+
+    if "Add Friend" in r.text or "Profile" in r.text:
+        return "active"
+    if "Your Account Has Been Disabled" in r.text:
+        return "dead"
+    if "login" in r.url:
+        return "locked"
+    return "unknown"
+
+
+# ---------------------------------------
+# React function
+# ---------------------------------------
+def send_reaction(cookie, post_id, reaction):
+    session = requests.Session()
+    session.headers.update({
+        "Cookie": cookie,
+        "User-Agent": "Mozilla/5.0"
+    })
+
+    # Step 1: Open the reaction link
+    url = f"https://mbasic.facebook.com/reactions/picker/?ft_id={post_id}"
+    page = session.get(url).text
+
+    # Reaction IDs
+    react_map = {
+        "like": "1",
+        "love": "2",
+        "care": "16",
+        "haha": "4",
+        "wow": "3",
+        "sad": "7",
+        "angry": "8"
+    }
+
+    if reaction not in react_map:
+        return False, "Invalid reaction"
+
+    react_code = react_map[reaction]
+
+    # Search the reaction link
+    import re
+    match = re.search(r'href="([^"]+)&reaction_type=' + react_code, page)
+    if not match:
+        return False, "Cannot find reaction link"
+
+    react_link = "https://mbasic.facebook.com" + match.group(1).replace("&amp;", "&") + f"&reaction_type={react_code}"
+
+    session.get(react_link)
+    return True, "Reacted!"
+
+
+# ---------------------------------------
+# Add new account
+# ---------------------------------------
 def add_account():
-    os.system("clear")
-    print("=== ADD ACCOUNT ===\n")
-    dbln = input("Paste DB-LN cookie: ").strip()
-    name = input("Enter a name for this account: ").strip()
+    print("\nEnter DBLN Cookie:")
+    cookie = input("Cookie: ")
 
-    print("\nGetting Graph API token …")
-    token = get_token_from_cookie(dbln)
-    if not token:
-        print("❌ Failed to get token. Cookie invalid.")
-        time.sleep(2)
-        return
+    print("Checking account...")
+    status = check_account(cookie)
+    print("Status:", status)
 
-    accounts = load_accounts()
-    accounts.append({"dbln": dbln, "token": token, "name": name})
-    save_accounts(accounts)
+    data = load_accounts()
+    data.append({"cookie": cookie, "status": status})
+    save_accounts(data)
 
-    print("\n✅ Account added!")
-    print("Token prefix:", token[:20], "…")
-    time.sleep(2)
+    print("Account saved!\n")
 
-def react_to_post():
-    os.system("clear")
-    print("=== AUTO REACT ===\n")
-    post = input("Enter public post URL or ID: ").strip()
-    reaction = input("Enter reaction (LIKE, LOVE, WOW, HAHA, SAD, ANGRY, CARE): ").upper()
 
-    accounts = load_accounts()
-    if not accounts:
-        print("❌ No accounts in config.")
-        time.sleep(2)
-        return
+# ---------------------------------------
+# Remove dead accounts
+# ---------------------------------------
+def clean_dead():
+    data = load_accounts()
+    new = [acc for acc in data if acc["status"] == "active"]
+    removed = len(data) - len(new)
 
-    post_id = post.split("/")[-1].split("?")[0] if "/" in post else post
-    print(f"\nUsing {len(accounts)} accounts …\n")
+    save_accounts(new)
+    print(f"\nRemoved: {removed} dead/locked accounts\n")
 
-    for i, acc in enumerate(accounts, start=1):
-        token = acc.get("token")
-        name = acc.get("name", "<no name>")
-        print(f"[{i}] Reacting with {name} …")
 
-        url = f"{GRAPH_API}/{post_id}/reactions"
-        data = {"type": reaction, "access_token": token}
-        r = requests.post(url, data=data)
+# ---------------------------------------
+# Recheck all accounts
+# ---------------------------------------
+def refresh_status():
+    data = load_accounts()
+    active = dead = locked = 0
 
-        try:
-            resp = r.json()
-        except:
-            resp = {}
+    print("\nChecking all accounts...\n")
+    for acc in data:
+        s = check_account(acc["cookie"])
+        acc["status"] = s
+        if s == "active":
+            active += 1
+        elif s == "dead":
+            dead += 1
+        elif s == "locked":
+            locked += 1
 
-        if r.status_code == 200 and "error" not in resp:
-            print("   ✅ Success")
-        else:
-            print("   ❌ Failed:", resp)
+    save_accounts(data)
 
-        time.sleep(1)
+    print("Active:", active)
+    print("Dead:", dead)
+    print("Locked:", locked)
+    print()
 
-    input("\nDone. Press Enter to return to menu…")
 
-def show_accounts():
-    os.system("clear")
-    print("=== SAVED ACCOUNTS ===\n")
-    accounts = load_accounts()
-    if not accounts:
-        print("No accounts saved.\n")
-    else:
-        for i, acc in enumerate(accounts, start=1):
-            name = acc.get("name", "<no name>")
-            token = acc.get("token", "")
-            print(f"[{i}] {name} — token prefix: {token[:20]}…")
-    input("\nPress Enter to go back…")
+# ---------------------------------------
+# Auto Reaction
+# ---------------------------------------
+def auto_react():
+    post_id = input("\nEnter Post ID: ")
+    reaction = input("Reaction (like/love/haha/wow/sad/angry/care): ")
+    limit = int(input("Limit number of reactions: "))
 
-def delete_account():
-    accounts = load_accounts()
-    if not accounts:
-        print("❌ No accounts to delete.")
-        time.sleep(2)
-        return
-    show_accounts()
-    idx = input("Enter account number to delete: ").strip()
-    try:
-        idx = int(idx) - 1
-        if 0 <= idx < len(accounts):
-            removed = accounts.pop(idx)
-            save_accounts(accounts)
-            print(f"✅ Removed account: {removed.get('name')}")
-        else:
-            print("❌ Index out of range.")
-    except ValueError:
-        print("❌ Invalid input.")
-    time.sleep(2)
+    data = load_accounts()
+    count = 0
 
-def menu():
-    while True:
-        os.system("clear")
-        accounts = load_accounts()
-        print("===== FB AUTO REACT TOOL =====")
-        print(f"Accounts saved: {len(accounts)}")
-        print("[1] Add account")
-        print("[2] Show accounts")
-        print("[3] Auto react to post")
-        print("[4] Delete account")
-        print("[0] Exit")
-        choice = input("Choose: ").strip()
+    for acc in data:
+        if acc["status"] != "active":
+            continue
 
-        if choice == "1":
-            add_account()
-        elif choice == "2":
-            show_accounts()
-        elif choice == "3":
-            react_to_post()
-        elif choice == "4":
-            delete_account()
-        elif choice == "0":
+        if count >= limit:
             break
-        else:
-            print("❌ Invalid choice.")
-            time.sleep(1)
+
+        ok, msg = send_reaction(acc["cookie"], post_id, reaction)
+        print(f"[{acc['status']}] {msg}")
+
+        count += 1
+        time.sleep(2)
+
+    print(f"\nTotal reactions sent: {count}\n")
+
+
+# ---------------------------------------
+# Main Menu
+# ---------------------------------------
+def main():
+    while True:
+        print("""
+====== FACEBOOK AUTO REACT ======
+1. Add FB Account (DBLN Cookie)
+2. Auto React on Public Post
+3. Remove Dead/Locked Accounts
+4. Refresh Account Status
+5. Show Statistics
+0. Exit
+""")
+        c = input("Choose: ")
+
+        if c == "1":
+            add_account()
+        elif c == "2":
+            auto_react()
+        elif c == "3":
+            clean_dead()
+        elif c == "4":
+            refresh_status()
+        elif c == "5":
+            stats()
+        elif c == "0":
+            exit()
+
+
+# ---------------------------------------
+# Stats
+# ---------------------------------------
+def stats():
+    data = load_accounts()
+    active = sum(1 for a in data if a["status"] == "active")
+    dead = sum(1 for a in data if a["status"] == "dead")
+    locked = sum(1 for a in data if a["status"] == "locked")
+
+    print("\n===== ACCOUNT STATUS =====")
+    print("Active Accounts :", active)
+    print("Dead Accounts   :", dead)
+    print("Locked Accounts :", locked)
+    print("Total Accounts  :", len(data))
+    print()
+
 
 if __name__ == "__main__":
-    menu()
+    main()
