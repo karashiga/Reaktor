@@ -1,1 +1,12 @@
-
+[
+  {
+    "dbln": "your_dbln_cookie_here",
+    "token": "your_graph_token_here",
+    "name": "Account 1"
+  },
+  {
+    "dbln": "another_dbln_cookie",
+    "token": "another_graph_token",
+    "name": "Account 2"
+  }
+]
