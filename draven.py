@@ -1,17 +1,4 @@
-Pastebin
-Search...
 
-Login Sign up
-Burn After Read. Paste was created for your eyes only. When this paste is closed there will be no way to recover or view it again!
-Guest User
-Untitled
-a guest
-Nov 27th, 2025
-15
-0
-Burn after read
-Not a member of Pastebin yet? Sign Up, it unlocks many cool features!
-35.57 KB | None
 #!/usr/bin/env node
 /*
 =============================================================================
