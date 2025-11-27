@@ -1,30 +1,5 @@
 
 #!/usr/bin/env node
-/*
-=============================================================================
-FB AUTO SHARE v1.1 - FAST EDITION (4000 SHARES/ACCOUNT)
-=============================================================================
- 
-✨ FEATURES:
-- Multiple Accounts Support
-- FAST Mass Share (All Accounts Simultaneously)  
-- Beautiful Animated UI
-- Account Management
-- Statistics Tracking
-- Termux Compatible
-- 4000 SHARES PER ACCOUNT LIMIT
-- MINIMUM DELAYS (0-5 SECONDS)
- 
-🚀 QUICK START:
-1. Ensure Node.js is installed
-2. Save this file as: fb_auto_share.js
-3. Run: node fb_auto_share.js
- 
-Made by Jhames Martin
-Note dont change the credits
-okay?
- 
-goods
 =============================================================================
 */
  
